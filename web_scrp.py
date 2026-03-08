@@ -338,19 +338,27 @@ async def orquestador_de_busqueda(termino):
         browser = await p.chromium.launch(headless=True) 
         context = await browser.new_context()
         
-        # ¡LA CARRERA DE LOS 3 GIGANTES!
-        resultados_paralelos = await asyncio.gather(
-            buscar_en_vea(termino, context),
+        print("[Orquestador] Iniciando Tanda 1 (Carrefour y ChangoMás)...")
+        tanda_1 = await asyncio.gather(
             buscar_en_carrefour(termino, context),
-            buscar_en_changomas(termino, context),
-            buscar_en_dia(termino, context)
+            buscar_en_changomas(termino, context)
         )
-        
+    
+        print("[Orquestador] Iniciando Tanda 2 (Vea, Dia y Jumbo)...")
+        tanda_2 = await asyncio.gather(
+            buscar_en_vea(termino, context),
+            buscar_en_dia(termino, context),
+            buscar_en_jumbo(termino, context)
+        )   
+    
+        # Unificamos todos los resultados de ambas tandas en una sola lista
+        # tanda_1[0] -> Carrefour | tanda_1[1] -> ChangoMás
+        # tanda_2[0] -> Vea       | tanda_2[1] -> Dia        | tanda_2[2] -> Jumbo
+        resultados_totales = tanda_1[0] + tanda_1[1] + tanda_2[0] + tanda_2[1] + tanda_2[2]
+    
         await browser.close()
-        
-        resultados_finales = [item for sublista in resultados_paralelos for item in sublista]
-        
-        resultados_limpios = [r for r in resultados_finales if r["precio"] is not None]
+            
+        resultados_limpios = [r for r in resultados_totales if r["precio"] is not None]
         resultados_limpios.sort(key=lambda x: x["precio"])
-        
+    
         return resultados_limpios
