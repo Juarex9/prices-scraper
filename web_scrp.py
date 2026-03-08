@@ -2,6 +2,14 @@ import asyncio
 from playwright.async_api import async_playwright
 import urllib.parse
 
+async def bloquear_recursos_pesados(route):
+    # Si lo que intenta descargar es una imagen, estilo, fuente de texto o video, lo bloqueamos
+    if route.request.resource_type in ["image", "stylesheet", "font", "media"]:
+        await route.abort()
+    else:
+        # Si es HTML o datos de la API, lo dejamos pasar
+        await route.continue_()
+
 def limpiar_precio(precio_texto):
     if not precio_texto: return 0.0
     # Sumamos replace("\n", "") por si text_content() trae saltos de línea
@@ -15,6 +23,7 @@ def limpiar_precio(precio_texto):
 async def buscar_en_vea(termino, context):
     print(f"[Vea] Buscando en grilla: '{termino}'...")
     page = await context.new_page() 
+    await page.route("**/*", bloquear_recursos_pesados)
     
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.vea.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
@@ -86,6 +95,8 @@ async def buscar_en_vea(termino, context):
 async def buscar_en_carrefour(termino, context):
     print(f"[Carrefour] Buscando en grilla: '{termino}'...")
     page = await context.new_page() 
+    await page.route("**/*", bloquear_recursos_pesados)
+    
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.carrefour.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
     resultados_carrefour = []
@@ -136,7 +147,9 @@ async def buscar_en_carrefour(termino, context):
 
 async def buscar_en_changomas(termino, context):
     print(f"[ChangoMás] Buscando en grilla: '{termino}'...")
-    page = await context.new_page() 
+    page = await context.new_page()
+    await page.route("**/*", bloquear_recursos_pesados)
+    
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.masonline.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
     resultados_changomas = []
@@ -198,6 +211,8 @@ async def buscar_en_changomas(termino, context):
 async def buscar_en_dia(termino, context):
     print(f"[Dia] Buscando en grilla: '{termino}'...")
     page = await context.new_page() 
+    await page.route("**/*", bloquear_recursos_pesados)
+
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://diaonline.supermercadosdia.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
     resultados_dia = []
@@ -255,6 +270,8 @@ async def buscar_en_dia(termino, context):
 async def buscar_en_jumbo(termino, context):
     print(f"[Jumbo] Buscando en grilla: '{termino}'...")
     page = await context.new_page() 
+    await page.route("**/*", bloquear_recursos_pesados)
+
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.jumbo.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
     resultados_jumbo = []
