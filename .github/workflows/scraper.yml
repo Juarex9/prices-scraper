@@ -1,0 +1,33 @@
+name: Tarea Automática de Scraping
+
+on:
+  schedule:
+    # Los horarios en los servidores están en UTC. 
+    # Las 06:00 UTC son las 03:00 AM en Argentina.
+    - cron: '0 6 * * *'  
+    # Las 18:00 UTC son las 15:00 PM en Argentina.
+    - cron: '0 18 * * *' 
+  workflow_dispatch: # Este comando te deja el botón de "Play" para correrlo manual desde GitHub cuando quieras.
+
+jobs:
+  extraccion_precios:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Ejecutar Worker de Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scraper_worker.py
