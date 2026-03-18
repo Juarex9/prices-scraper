@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados para {{ termino }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <div class="flex items-center justify-between mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">
+                Precios para: <span class="text-blue-600 capitalize">{{ termino }}</span>
+            </h1>
+            <a href="/" class="text-blue-500 hover:text-blue-700 font-semibold underline">← Nueva Búsqueda</a>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            
+            {% if resultados %}
+                {% for item in resultados %}
+                <div class="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-shadow">
+                    
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">
+                            Supermercado ID: {{ item.supermercado_id }}
+                        </span>
+                        <span class="text-2xl font-black text-green-600">
+                            ${{ item.precio }}
+                        </span>
+                    </div>
+                    
+                    <h2 class="text-gray-700 font-medium mb-2 line-clamp-2">
+                        {{ item.titulo_encontrado }}
+                    </h2>
+                    
+                    <p class="text-sm text-gray-500 mb-4">
+                        Detalle: {{ item.precio_x_unidad if item.precio_x_unidad else 'No informado' }}
+                    </p>
+                    
+                    <a href="{{ item.url_compra }}" target="_blank" class="block w-full text-center bg-gray-900 hover:bg-gray-800 text-white font-semibold py-2 px-4 rounded transition-colors">
+                        Ver en tienda
+                    </a>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-span-full bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-center">
+                    No encontramos el producto trackeado en la base de datos actual.
+                </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+</body>
+</html>
