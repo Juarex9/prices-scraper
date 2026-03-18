@@ -56,7 +56,7 @@ async def main():
                     "producto_id": prod_id,
                     "supermercado_id": supermercados_db[sup_nombre],
                     "precio": res.get('precio'),
-                    "titulo_encontrado": res.get('titulo', 'Sin titulo'),
+                    "titulo_encontrado": res.get('producto_encontrado', 'Sin titulo'),
                     "url_compra": res.get('url', '')
                 }
                 
