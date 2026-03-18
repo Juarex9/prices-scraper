@@ -99,8 +99,8 @@
         <h1>Comparador de Precios</h1>
         <p>Buscá y compará:</p>
 
-        <form action="/buscar" method="post">
-            <input type="text" name="producto_ingresado" placeholder="Ej: fernet branca" required
+        <form action="/buscar" method="get">
+            <input type="text" name="termino" placeholder="Ej: fernet branca" required
                 value="{{ busqueda if busqueda else '' }}">
             <button type="submit">Buscar</button>
         </form>
