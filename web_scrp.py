@@ -35,27 +35,28 @@ async def buscar_en_vea(termino, context):
         
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
         
-        # --- CAMBIO CLAVE 1: El bloque try anidado para esperar al precio ---
         try:
             await page.wait_for_selector(selector_tarjetas, timeout=15000)
-            # Obligamos al bot a no avanzar hasta que vea al menos UN precio dibujado
             await page.wait_for_selector("#priceContainer", timeout=15000)
             await page.wait_for_timeout(2000) 
         except:
             print(f"[Vea] No cargaron las tarjetas o los precios a tiempo.")
             await page.close()
             return []
-        # --------------------------------------------------------------------
         
-        # Agarramos TODAS las tarjetas de la pantalla
         tarjetas = await page.locator(selector_tarjetas).all()
         palabras_buscadas = termino.lower().split()
         
+        # --- CAMBIO CLAVE 1: Limitamos a procesar solo 7 tarjetas ---
+        productos_agregados = 0
+        
         for tarjeta in tarjetas:
+            if productos_agregados >= 7:
+                break # Si ya tenemos 7, salimos del bucle
+            
             titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             
             if await titulo_elemento.count() > 0:
-                # --- CAMBIO CLAVE 2: Usar text_content() para ignorar popups ---
                 titulo = await titulo_elemento.first.text_content()
                 titulo_minuscula = titulo.strip().lower() if titulo else ""
                 
@@ -64,9 +65,17 @@ async def buscar_en_vea(termino, context):
                     precio_elemento = tarjeta.locator("#priceContainer")
                     
                     if await precio_elemento.count() > 0:
-                        # --- CAMBIO CLAVE 3: Usar text_content() acá también ---
                         precio_texto = await precio_elemento.first.text_content()
                         precio_numero = limpiar_precio(precio_texto)
+                        
+                        # --- CAMBIO CLAVE 2: Buscar el precio por unidad ---
+                        # Usamos la clase general de VTEX para el precio por medida.
+                        # Vas a tener que confirmar si esta es la clase correcta en Vea.
+                        precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
+                        if await precio_unidad_elemento.count() > 0:
+                            precio_unidad_texto = await precio_unidad_elemento.first.text_content()
+                        else:
+                            precio_unidad_texto = "No informado"
                         
                         url_relativa = await tarjeta.get_attribute("href")
                         url_final = f"https://www.vea.com.ar{url_relativa}" if url_relativa else url_busqueda
@@ -75,9 +84,13 @@ async def buscar_en_vea(termino, context):
                             "supermercado": "Vea",
                             "producto_encontrado": titulo.strip(),
                             "precio": precio_numero,
+                            "precio_x_unidad": precio_unidad_texto, # Guardamos el nuevo dato
                             "url": url_final,
                             "estado": "ok"
                         })
+                        
+                        # Incrementamos el contador solo si encontramos un precio válido
+                        productos_agregados += 1 
         
         await page.close()
         
@@ -274,26 +287,34 @@ async def buscar_en_jumbo(termino, context):
 
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.jumbo.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
+
     resultados_jumbo = []
+    
     
     try:
         await page.goto(url_busqueda, timeout=60000)
+        
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
         
         try:
             await page.wait_for_selector(selector_tarjetas, timeout=15000)
-            # Usamos la clase genérica de la captura que no tiene el hash raro
-            await page.wait_for_selector(".vtex-price-format-gallery", timeout=15000)
+            await page.wait_for_selector("#priceContainer", timeout=15000)
             await page.wait_for_timeout(2000) 
         except:
             print(f"[Jumbo] No cargaron las tarjetas o los precios a tiempo.")
             await page.close()
             return []
-            
+        
         tarjetas = await page.locator(selector_tarjetas).all()
         palabras_buscadas = termino.lower().split()
         
+        # --- CAMBIO CLAVE 1: Limitamos a procesar solo 7 tarjetas ---
+        productos_agregados = 0
+        
         for tarjeta in tarjetas:
+            if productos_agregados >= 7:
+                break # Si ya tenemos 7, salimos del bucle
+            
             titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             
             if await titulo_elemento.count() > 0:
@@ -301,28 +322,41 @@ async def buscar_en_jumbo(termino, context):
                 titulo_minuscula = titulo.strip().lower() if titulo else ""
                 
                 if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    # Apuntamos directo al precio
-                    precio_elemento = tarjeta.locator(".vtex-price-format-gallery")
+                    
+                    precio_elemento = tarjeta.locator("#priceContainer")
                     
                     if await precio_elemento.count() > 0:
                         precio_texto = await precio_elemento.first.text_content()
                         precio_numero = limpiar_precio(precio_texto)
                         
+                        # --- CAMBIO CLAVE 2: Buscar el precio por unidad ---
+                        # Usamos la clase general de VTEX para el precio por medida.
+                        # Vas a tener que confirmar si esta es la clase correcta en Vea.
+                        precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
+                        if await precio_unidad_elemento.count() > 0:
+                            precio_unidad_texto = await precio_unidad_elemento.first.text_content()
+                        else:
+                            precio_unidad_texto = "No informado"
+                        
                         url_relativa = await tarjeta.get_attribute("href")
-                        url_final = f"https://www.jumbo.com.ar{url_relativa}" if url_relativa else url_busqueda
+                        url_final = f"https://www.jumbo.com.ar/{url_relativa}" if url_relativa else url_busqueda
                         
                         resultados_jumbo.append({
-                            "supermercado": "Jumbo",
+                            "supermercado": "Vea",
                             "producto_encontrado": titulo.strip(),
                             "precio": precio_numero,
+                            "precio_x_unidad": precio_unidad_texto, # Guardamos el nuevo dato
                             "url": url_final,
                             "estado": "ok"
                         })
+                        
+                        # Incrementamos el contador solo si encontramos un precio válido
+                        productos_agregados += 1 
         
         await page.close()
         
         if not resultados_jumbo:
-            print(f"[Jumbo] DESCARTADO: Ningún producto en la grilla coincidió.")
+            print(f"[Vea] DESCARTADO: Ningún producto en la grilla coincidió.")
             
         return resultados_jumbo
         
