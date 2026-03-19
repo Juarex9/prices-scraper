@@ -15,8 +15,6 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from supabase import create_client, Client
 
-from web_scrp import orquestador_de_busqueda
-
 load_dotenv()
 
 SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
@@ -153,82 +151,16 @@ async def buscar_producto(request: Request, termino: str, response: Response):
         "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
     ).ilike("titulo_encontrado", f"%{termino}%").order("precio", desc=False).limit(50).execute()
     
-    if precios_data.data:
-        resultados_limpios = []
-        for item in precios_data.data:
-            resultados_limpios.append({
-                "supermercado_id": item.get('supermercados', {}).get('nombre', 'Unknown'),
-                "titulo_encontrado": item.get('titulo_encontrado', ''),
-                "precio": item.get('precio', 0),
-                "url_compra": item.get('url_compra', ''),
-                "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
-                "fecha_actualizacion": item.get('fecha_captura', '')
-            })
-        
-        cache.set(cache_key, {"resultados": resultados_limpios})
-        
-        return templates.TemplateResponse(
-            "resultados.html",
-            {
-                "request": request,
-                "termino": termino,
-                "resultados": resultados_limpios
-            }
-        )
-    
-    res_supers = supabase.table("supermercados").select("id, nombre").execute()
-    supermercados_db = {s['nombre'].lower(): s['id'] for s in res_supers.data}
-    
-    print(f"[API] No hay datos para '{termino}', buscando en tiempo real...")
-    
-    try:
-        resultados_scraper = await orquestador_de_busqueda(termino)
-    except Exception as e:
-        print(f"[API] Error en scraper: {e}")
-        return templates.TemplateResponse(
-            "resultados.html",
-            {
-                "request": request,
-                "termino": termino,
-                "resultados": [],
-                "error": "No se pudo obtener precios en este momento"
-            }
-        )
-    
-    if not resultados_scraper:
-        cache.set(cache_key, {"resultados": []})
-        return templates.TemplateResponse(
-            "resultados.html",
-            {"request": request, "termino": termino, "resultados": []}
-        )
-    
     resultados_limpios = []
-    for res in resultados_scraper:
-        sup_nombre = res.get('supermercado', '').lower()
-        
-        if sup_nombre in supermercados_db:
-            data_insert = {
-                "supermercado_id": supermercados_db[sup_nombre],
-                "precio": res.get('precio'),
-                "titulo_encontrado": res.get('producto_encontrado', 'Sin titulo'),
-                "url_compra": res.get('url', ''),
-                "precio_x_unidad": res.get('precio_x_unidad', 'No informado'),
-                "fecha_captura": datetime.utcnow().isoformat()
-            }
-            
-            try:
-                supabase.table("historial_precios").insert(data_insert).execute()
-            except Exception as e:
-                print(f"[API] Error al guardar en DB: {e}")
-            
-            resultados_limpios.append({
-                "supermercado_id": res.get('supermercado', 'Unknown'),
-                "titulo_encontrado": res.get('producto_encontrado', ''),
-                "precio": res.get('precio', 0),
-                "url_compra": res.get('url', ''),
-                "precio_x_unidad": res.get('precio_x_unidad', 'No informado'),
-                "fecha_actualizacion": datetime.utcnow().isoformat()
-            })
+    for item in precios_data.data or []:
+        resultados_limpios.append({
+            "supermercado_id": item.get('supermercados', {}).get('nombre', 'Unknown'),
+            "titulo_encontrado": item.get('titulo_encontrado', ''),
+            "precio": item.get('precio', 0),
+            "url_compra": item.get('url_compra', ''),
+            "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
+            "fecha_actualizacion": item.get('fecha_captura', '')
+        })
     
     cache.set(cache_key, {"resultados": resultados_limpios})
     
