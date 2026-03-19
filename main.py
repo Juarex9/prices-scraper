@@ -156,16 +156,18 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     
     producto = supabase.table("productos_buscados").select("id").ilike("termino_busqueda", f"%{termino}%").maybe_single().execute()
     
-    if not producto:
+    if not producto.data:
         cache.set(cache_key, {"resultados": []})
         return templates.TemplateResponse(
             "resultados.html",
             {"request": request, "termino": termino, "resultados": []}
         )
     
+    producto_id = producto.data['id']
+    
     precios_data = supabase.table("historial_precios").select(
         "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
-    ).eq("producto_id", producto.id).order("fecha_captura", desc=True).limit(10).execute()
+    ).eq("producto_id", producto_id).order("fecha_captura", desc=True).limit(10).execute()
     
     resultados_limpios = []
     for item in precios_data.data or []:
