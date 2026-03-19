@@ -1,10 +1,15 @@
 import os
 import re
+import sys
+import asyncio
 import hashlib
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Optional
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
