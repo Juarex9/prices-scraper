@@ -1,57 +1,552 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resultados para {{ termino }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50 min-h-screen p-8">
+{% extends "base.html" %}
 
-    <div class="max-w-4xl mx-auto">
-        <div class="flex items-center justify-between mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">
-                Precios para: <span class="text-blue-600 capitalize">{{ termino }}</span>
-            </h1>
-            <a href="/" class="text-blue-500 hover:text-blue-700 font-semibold underline">← Nueva Búsqueda</a>
+{% block title %}Resultados: {{ termino }} - Comparador de Precios{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .header {
+        padding: 16px 0;
+        background: white;
+        box-shadow: var(--shadow-sm);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+    
+    .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+    }
+    
+    .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 1.2rem;
+        color: var(--dark);
+    }
+    
+    .logo-icon {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1rem;
+    }
+    
+    .header-form {
+        display: flex;
+        gap: 10px;
+        flex: 1;
+        max-width: 400px;
+    }
+    
+    .header-form input {
+        flex: 1;
+        padding: 12px 18px;
+        background: var(--gray-100);
+        border: 2px solid transparent;
+        border-radius: var(--radius-md);
+        color: var(--dark);
+        font-family: var(--font-body);
+        font-size: 0.9rem;
+        outline: none;
+        transition: all 0.2s;
+    }
+    
+    .header-form input:focus {
+        background: white;
+        border-color: var(--primary);
+    }
+    
+    .header-form button {
+        padding: 12px 20px;
+        background: var(--dark);
+        color: white;
+        border: none;
+        border-radius: var(--radius-md);
+        font-family: var(--font-body);
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .header-form button:hover {
+        background: var(--primary);
+    }
+    
+    .results-main {
+        padding: 40px 0 80px;
+    }
+    
+    .results-hero {
+        margin-bottom: 32px;
+    }
+    
+    .results-hero h1 {
+        font-family: var(--font-display);
+        font-size: clamp(1.75rem, 4vw, 2.5rem);
+        font-weight: 700;
+        color: var(--dark);
+        margin-bottom: 8px;
+    }
+    
+    .results-hero h1 span {
+        color: var(--primary);
+    }
+    
+    .results-meta {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    
+    .results-count {
+        font-size: 0.9rem;
+        color: var(--gray-500);
+    }
+    
+    .results-count strong {
+        color: var(--primary);
+        font-weight: 700;
+    }
+    
+    .cached-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        background: rgba(13, 148, 136, 0.1);
+        color: var(--primary-dark);
+        border-radius: 100px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    
+    .savings-banner {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 20px 24px;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        border-radius: var(--radius-lg);
+        margin-bottom: 28px;
+        color: white;
+        box-shadow: var(--shadow-md);
+    }
+    
+    .savings-icon {
+        font-size: 1.75rem;
+    }
+    
+    .savings-text h3 {
+        font-family: var(--font-display);
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 2px;
+    }
+    
+    .savings-text p {
+        font-size: 0.8rem;
+        opacity: 0.9;
+    }
+    
+    .filters {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+    
+    .filter-btn {
+        padding: 8px 16px;
+        background: white;
+        border: 2px solid var(--gray-200);
+        border-radius: 100px;
+        color: var(--gray-500);
+        font-family: var(--font-body);
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .filter-btn:hover {
+        border-color: var(--gray-300);
+        color: var(--dark);
+    }
+    
+    .filter-btn.active {
+        background: var(--dark);
+        border-color: var(--dark);
+        color: white;
+    }
+    
+    .results-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+    }
+    
+    .product-card {
+        background: white;
+        border-radius: var(--radius-md);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid var(--gray-200);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .product-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-lg);
+        border-color: var(--primary-light);
+    }
+    
+    .product-card.cheapest {
+        border: 2px solid var(--primary);
+    }
+    
+    .product-card.cheapest::before {
+        content: '✓ Mejor precio';
+        position: absolute;
+        top: 12px;
+        right: -28px;
+        background: var(--primary);
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 4px 32px;
+        transform: rotate(45deg);
+        z-index: 10;
+    }
+    
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 16px;
+        background: linear-gradient(135deg, var(--dark) 0%, var(--dark-soft) 100%);
+    }
+    
+    .supermarket-badge {
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .supermarket-badge.vea { 
+        background: var(--vea); 
+        color: #000;
+    }
+    .supermarket-badge.carrefour { 
+        background: var(--carrefour); 
+        color: #fff;
+    }
+    .supermarket-badge.changomas { 
+        background: var(--changomas); 
+        color: #fff;
+    }
+    .supermarket-badge.dia { 
+        background: var(--dia); 
+        color: #fff;
+    }
+    .supermarket-badge.jumbo { 
+        background: var(--jumbo); 
+        color: #fff;
+    }
+    .supermarket-badge.default { 
+        background: var(--gray-500); 
+        color: #fff;
+    }
+    
+    .price-label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        color: rgba(255,255,255,0.7);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .card-body {
+        padding: 16px;
+    }
+    
+    .product-name {
+        font-family: var(--font-display);
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--dark);
+        line-height: 1.4;
+        margin-bottom: 12px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-height: 2.6em;
+    }
+    
+    .price-display {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+    }
+    
+    .price {
+        font-family: var(--font-display);
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: var(--dark);
+        letter-spacing: -0.5px;
+    }
+    
+    .price-uva {
+        font-size: 0.75rem;
+        color: var(--gray-400);
+        font-weight: 500;
+    }
+    
+    .price-unit {
+        display: block;
+        font-size: 0.7rem;
+        color: var(--gray-500);
+        margin-top: 4px;
+        padding: 4px 8px;
+        background: var(--gray-100);
+        border-radius: 4px;
+        width: fit-content;
+    }
+    
+    .card-footer {
+        padding: 12px 16px;
+        background: var(--gray-100);
+        border-top: 1px solid var(--gray-200);
+    }
+    
+    .buy-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 12px;
+        background: white;
+        border: 2px solid var(--dark);
+        color: var(--dark);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.85rem;
+        border-radius: var(--radius-sm);
+        transition: all 0.2s;
+    }
+    
+    .buy-btn:hover {
+        background: var(--dark);
+        color: white;
+    }
+    
+    .buy-btn svg {
+        width: 16px;
+        height: 16px;
+        transition: transform 0.2s;
+    }
+    
+    .buy-btn:hover svg {
+        transform: translateX(3px);
+    }
+    
+    .error-banner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        background: #fef2f2;
+        border: 2px solid #fecaca;
+        border-radius: var(--radius-md);
+        margin-bottom: 24px;
+        color: #dc2626;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 40px;
+        background: white;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .empty-icon {
+        width: 64px;
+        height: 64px;
+        background: var(--gray-100);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        margin: 0 auto 20px;
+    }
+    
+    .empty-state h2 {
+        font-family: var(--font-display);
+        font-size: 1.25rem;
+        color: var(--dark);
+        margin-bottom: 8px;
+    }
+    
+    .empty-state p {
+        color: var(--gray-500);
+    }
+    
+    @media (max-width: 768px) {
+        .header-inner {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .header-form {
+            max-width: 100%;
+        }
+        
+        .results-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .savings-banner {
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+        }
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div class="container header-inner">
+        <a href="/" class="logo">
+            <div class="logo-icon">◆</div>
+            Precios
+        </a>
+        <form action="/buscar" method="get" class="header-form">
+            <input type="text" name="termino" placeholder="Buscar otro..." value="{{ termino }}">
+            <button type="submit">Buscar</button>
+        </form>
+    </div>
+</div>
+
+<div class="results-main">
+    <div class="container">
+        {% if error %}
+        <div class="error-banner">
+            <span>⚠</span>
+            <span>{{ error }}</span>
         </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% endif %}
+        
+        {% if resultados %}
+            <div class="results-hero">
+                <h1>Resultados para: <span>"{{ termino }}"</span></h1>
+                <div class="results-meta">
+                    <span class="results-count"><strong>{{ resultados|length }}</strong> productos</span>
+                    {% if cached %}
+                    <span class="cached-badge">✓ En cache</span>
+                    {% endif %}
+                </div>
+            </div>
             
-            {% if resultados %}
+            {% if resultados|length > 1 %}
+            <div class="savings-banner">
+                <div class="savings-icon">📉</div>
+                <div class="savings-text">
+                    <h3>Ahorrá hasta ${{ ((resultados[-1].precio - resultados[0].precio) or 0)|round|int }}</h3>
+                    <p>Encontrá el precio más bajo entre todos los supermercados</p>
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="filters">
+                <button class="filter-btn active" data-filter="all">Todos</button>
+                {% set seen = [] %}
                 {% for item in resultados %}
-                <div class="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-shadow">
-                    
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">
-                            Supermercado ID: {{ item.supermercado_id }}
+                    {% if item.supermercado_id not in seen %}
+                        {% set _ = seen.append(item.supermercado_id) %}
+                        <button class="filter-btn" data-filter="{{ item.supermercado_id }}">{{ item.supermercado_id }}</button>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            
+            <div class="results-grid">
+                {% for item in resultados %}
+                <div class="product-card {% if loop.first %}cheapest{% endif %}" data-supermarket="{{ item.supermercado_id }}" style="animation: fadeIn 0.4s ease-out {{ loop.index * 0.05 }}s both">
+                    <div class="card-header">
+                        <span class="supermarket-badge {{ item.supermercado_id|lower|replace(' ', '')|replace('á', 'a')|replace('é', 'e')|replace('í', 'i')|replace('ó', 'o')|replace('ú', 'u') }}">
+                            {{ item.supermercado_id }}
                         </span>
-                        <span class="text-2xl font-black text-green-600">
-                            ${{ item.precio }}
-                        </span>
+                        <span class="price-label">Precio</span>
                     </div>
-                    
-                    <h2 class="text-gray-700 font-medium mb-2 line-clamp-2">
-                        {{ item.titulo_encontrado }}
-                    </h2>
-                    
-                    <p class="text-sm text-gray-500 mb-4">
-                        Detalle: {{ item.precio_x_unidad if item.precio_x_unidad else 'No informado' }}
-                    </p>
-                    
-                    <a href="{{ item.url_compra }}" target="_blank" class="block w-full text-center bg-gray-900 hover:bg-gray-800 text-white font-semibold py-2 px-4 rounded transition-colors">
-                        Ver en tienda
-                    </a>
+                    <div class="card-body">
+                        <h3 class="product-name">{{ item.titulo_encontrado }}</h3>
+                        <div class="price-display">
+                            <span class="price">${{ item.precio }}</span>
+                        </div>
+                        {% if item.precio_x_unidad and item.precio_x_unidad != 'No informado' %}
+                        <span class="price-unit">{{ item.precio_x_unidad }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer">
+                        <a href="{{ item.url_compra }}" target="_blank" class="buy-btn">
+                            Ver precio
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        </a>
+                    </div>
                 </div>
                 {% endfor %}
-            {% else %}
-                <div class="col-span-full bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-center">
-                    No encontramos el producto trackeado en la base de datos actual.
-                </div>
-            {% endif %}
-
-        </div>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <h2>No encontramos resultados</h2>
+                <p>Probá con otro término de búsqueda.</p>
+            </div>
+        {% endif %}
     </div>
+</div>
+{% endblock %}
 
-</body>
-</html>
+{% block scripts %}
+<script>
+document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        
+        const filter = this.dataset.filter;
+        document.querySelectorAll('.product-card').forEach(card => {
+            const show = filter === 'all' || card.dataset.supermarket === filter;
+            card.style.display = show ? 'block' : 'none';
+        });
+    });
+});
+</script>
+{% endblock %}
