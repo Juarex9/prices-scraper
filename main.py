@@ -20,8 +20,6 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from supabase import create_client, Client
 
-from web_scrp import orquestador_de_busqueda
-
 load_dotenv()
 
 SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
@@ -175,6 +173,7 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     if not resultados_limpios:
         print(f"[Buscar] Sin resultados en BDD para '{termino}', consultando supermercados en tiempo real...")
         try:
+            from web_scrp import orquestador_de_busqueda
             resultados_scraper = await orquestador_de_busqueda(termino)
             if resultados_scraper:
                 for item in resultados_scraper:
@@ -225,3 +224,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             }
         )
     raise exc
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    if sys.platform == "win32":
+        loop = asyncio.SelectorEventLoop()
+        asyncio.set_event_loop(loop)
+    else:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=8000, loop=loop)
+    server = uvicorn.Server(config)
+    loop.run_until_complete(server.serve())
