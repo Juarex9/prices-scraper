@@ -14,15 +14,9 @@
                 <h1 class="text-3xl font-bold text-gray-800">
                     Precios para: <span class="text-blue-600 capitalize">{{ termino }}</span>
                 </h1>
-                {% if fuente == "scraper" %}
                 <p class="text-sm text-orange-600 mt-1">
-                    ⚡ Resultados obtenidos en tiempo real de los supermercados
+                    Resultados obtenidos en tiempo real
                 </p>
-                {% elif fuente == "bdd" %}
-                <p class="text-sm text-green-600 mt-1">
-                    📊 Resultados de la base de datos
-                </p>
-                {% endif %}
             </div>
             <a href="/" class="text-blue-500 hover:text-blue-700 font-semibold underline">← Nueva Búsqueda</a>
         </div>
@@ -57,7 +51,7 @@
                 {% endfor %}
             {% else %}
                 <div class="col-span-full bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-center">
-                    No encontramos el producto trackeado en la base de datos actual.
+                    No se encontraron productos en los supermercados.
                 </div>
             {% endif %}
 

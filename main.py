@@ -1,15 +1,10 @@
 import os
 import re
-import sys
-import asyncio
 import hashlib
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Optional
-
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -18,17 +13,9 @@ from fastapi.templating import Jinja2Templates
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from supabase import create_client, Client
+from web_scrp import orquestador_de_busqueda
 
 load_dotenv()
-
-SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY: Optional[str] = os.environ.get("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Faltan credenciales de Supabase en el archivo .env")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -71,9 +58,6 @@ cache = TTLCache(max_size=100, ttl_seconds=300)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[Startup] Validando configuración...")
-    print(f"[Startup] Supabase URL: {'✓ configurada' if SUPABASE_URL else '✗ missing'}")
-    print(f"[Startup] Supabase KEY: {'✓ configurada' if SUPABASE_KEY else '✗ missing'}")
     print("[Startup] Cache TTL: 5 minutos")
     print("[Startup] API lista para recibir requests")
     yield
@@ -101,10 +85,7 @@ async def health_check(response: Response):
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "cache_size": len(cache.cache),
-        "services": {
-            "supabase": "connected"
-        }
+        "cache_size": len(cache.cache)
     }
 
 
@@ -145,62 +126,37 @@ async def buscar_producto(request: Request, termino: str, response: Response):
                 "request": request,
                 "termino": termino,
                 "resultados": cached_result["resultados"],
-                "cached": True,
-                "fuente": cached_result.get("fuente", "bdd")
+                "cached": True
             }
         )
 
     response.headers["X-Cache"] = "MISS"
     response.headers["Cache-Control"] = "public, max-age=300"
 
-    precios_data = supabase.table("historial_precios").select(
-        "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
-    ).ilike("titulo_encontrado", f"%{termino}%").order("precio", desc=False).limit(50).execute()
+    resultados = []
+    try:
+        resultados_raw = await orquestador_de_busqueda(termino)
+        if resultados_raw:
+            for item in resultados_raw:
+                resultados.append({
+                    "supermercado_id": item.get('supermercado', 'Unknown'),
+                    "titulo_encontrado": item.get('producto_encontrado', ''),
+                    "precio": item.get('precio', 0),
+                    "url_compra": item.get('url', ''),
+                    "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
+                    "fecha_actualizacion": datetime.utcnow().isoformat()
+                })
+    except Exception as e:
+        print(f"[Buscar] Error en scraper: {e}")
 
-    resultados_limpios = []
-    for item in precios_data.data or []:
-        resultados_limpios.append({
-            "supermercado_id": item.get('supermercados', {}).get('nombre', 'Unknown'),
-            "titulo_encontrado": item.get('titulo_encontrado', ''),
-            "precio": item.get('precio', 0),
-            "url_compra": item.get('url_compra', ''),
-            "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
-            "fecha_actualizacion": item.get('fecha_captura', '')
-        })
-
-    fuente = "bdd"
-
-    if not resultados_limpios:
-        print(f"[Buscar] Sin resultados en BDD para '{termino}', consultando supermercados en tiempo real...")
-        try:
-            from web_scrp import orquestador_de_busqueda
-            resultados_scraper = await orquestador_de_busqueda(termino)
-            if resultados_scraper:
-                for item in resultados_scraper:
-                    resultados_limpios.append({
-                        "supermercado_id": item.get('supermercado', 'Unknown'),
-                        "titulo_encontrado": item.get('producto_encontrado', ''),
-                        "precio": item.get('precio', 0),
-                        "url_compra": item.get('url', ''),
-                        "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
-                        "fecha_actualizacion": datetime.utcnow().isoformat()
-                    })
-                fuente = "scraper"
-                print(f"[Buscar] Scraper encontró {len(resultados_limpios)} productos")
-            else:
-                print(f"[Buscar] Scraper tampoco encontró resultados")
-        except Exception as e:
-            print(f"[Buscar] Error en scraper: {e}")
-
-    cache.set(cache_key, {"resultados": resultados_limpios, "fuente": fuente})
+    cache.set(cache_key, {"resultados": resultados})
 
     return templates.TemplateResponse(
         "resultados.html",
         {
             "request": request,
             "termino": termino,
-            "resultados": resultados_limpios,
-            "fuente": fuente
+            "resultados": resultados
         }
     )
 
@@ -224,18 +180,3 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             }
         )
     raise exc
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    if sys.platform == "win32":
-        loop = asyncio.SelectorEventLoop()
-        asyncio.set_event_loop(loop)
-    else:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    config = uvicorn.Config(app, host="127.0.0.1", port=8000, loop=loop)
-    server = uvicorn.Server(config)
-    loop.run_until_complete(server.serve())
