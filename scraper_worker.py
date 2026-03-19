@@ -62,7 +62,7 @@ async def main():
                     "producto_id": prod_id,
                     "supermercado_id": supermercados_db[sup_nombre],
                     "precio": res.get('precio'),
-                    "titulo_encontrado": res.get('producto_encontrado', 'Sin titulo'),
+                    "titulo_encontrado": res.get('titulo', 'Sin titulo'),
                     "url_compra": res.get('url', ''),
                     "precio_x_unidad": res.get('precio_x_unidad', 'No informado'),
                     "fecha_captura": datetime.utcnow().isoformat()

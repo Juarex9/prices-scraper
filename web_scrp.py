@@ -1,18 +1,20 @@
 import asyncio
-from playwright.async_api import async_playwright
+import sys
 import urllib.parse
+from playwright.async_api import async_playwright
 
-TIMEOUT_GOTO = 90000
-TIMEOUT_SELECTOR = 30000
-TIMEOUT_WAIT = 3000
+# Parche para Windows + Playwright (GitHub Actions en Linux lo ignora)
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+TIMEOUT_GOTO = 40000
+TIMEOUT_SELECTOR = 15000
 
 async def bloquear_recursos_pesados(route):
     if route.request.resource_type in ["image", "stylesheet", "font", "media"]:
         await route.abort()
     else:
         await route.continue_()
-
 
 def limpiar_precio(precio_texto):
     if not precio_texto:
@@ -24,7 +26,6 @@ def limpiar_precio(precio_texto):
     except:
         return 0.0
 
-
 async def buscar_en_vea(termino, context):
     print(f"[Vea] Iniciando búsqueda: '{termino}'...")
     page = await context.new_page()
@@ -32,77 +33,46 @@ async def buscar_en_vea(termino, context):
     
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.vea.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
-    
-    resultados_vea = []
+    resultados = []
     
     try:
-        print(f"[Vea] Navegando a {url_busqueda}")
         await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
-        
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
         
-        try:
-            print(f"[Vea] Esperando tarjetas...")
-            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
-            print(f"[Vea] Tarjetas encontradas, esperando precios...")
-            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
-            await page.wait_for_timeout(TIMEOUT_WAIT)
-        except Exception as e:
-            print(f"[Vea] ⚠ Timeout al esperar elementos: {e}")
-            await page.close()
-            return []
-        
+        await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
-        print(f"[Vea] Total tarjetas en grilla: {len(tarjetas)}")
         
-        palabras_buscadas = termino.lower().split()
-        productos_agregados = 0
-        
-        for i, tarjeta in enumerate(tarjetas):
-            if productos_agregados >= 7:
-                break
+        for tarjeta in tarjetas[:5]: # Agarramos las 5 primeras
+            titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
+            precio_el = tarjeta.locator(".vtex-product-price-1-x-currencyContainer, #priceContainer").first
             
-            titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
-            
-            if await titulo_elemento.count() > 0:
-                titulo = await titulo_elemento.first.text_content()
-                titulo_minuscula = titulo.strip().lower() if titulo else ""
+            if await titulo_el.count() > 0 and await precio_el.count() > 0:
+                titulo = await titulo_el.first.text_content()
+                precio_texto = await precio_el.text_content()
                 
-                if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    precio_elemento = tarjeta.locator("#priceContainer")
-                    
-                    if await precio_elemento.count() > 0:
-                        precio_texto = await precio_elemento.first.text_content()
-                        precio_numero = limpiar_precio(precio_texto)
-                        
-                        precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
-                        if await precio_unidad_elemento.count() > 0:
-                            precio_unidad_texto = await precio_unidad_elemento.first.text_content()
-                        else:
-                            precio_unidad_texto = "No informado"
-                        
-                        url_relativa = await tarjeta.get_attribute("href")
-                        url_final = f"https://www.vea.com.ar{url_relativa}" if url_relativa else url_busqueda
-                        
-                        resultados_vea.append({
-                            "supermercado": "Vea",
-                            "producto_encontrado": titulo.strip(),
-                            "precio": precio_numero,
-                            "precio_x_unidad": precio_unidad_texto,
-                            "url": url_final,
-                            "estado": "ok"
-                        })
-                        productos_agregados += 1
-        
+                try:
+                    unidad_el = tarjeta.locator(".vtex-custom-unit-price")
+                    precio_unidad = await unidad_el.first.text_content() if await unidad_el.count() > 0 else "No informado"
+                except:
+                    precio_unidad = "No informado"
+                
+                url_relativa = await tarjeta.get_attribute("href")
+                url_final = f"https://www.vea.com.ar{url_relativa}" if url_relativa else url_busqueda
+                
+                resultados.append({
+                    "supermercado": "Vea",
+                    "titulo": titulo.strip(),
+                    "precio": limpiar_precio(precio_texto),
+                    "precio_x_unidad": precio_unidad.replace("\n", " ").strip(),
+                    "url": url_final
+                })
+                
         await page.close()
-        print(f"[Vea] ✓ Encontrados: {len(resultados_vea)} productos")
-        return resultados_vea
-        
+        return resultados
     except Exception as e:
-        print(f"[Vea] ✗ Error crítico: {e}")
+        print(f"[Vea] ⚠ Error o Timeout: {e}")
         await page.close()
         return []
-
 
 async def buscar_en_carrefour(termino, context):
     print(f"[Carrefour] Iniciando búsqueda: '{termino}'...")
@@ -111,75 +81,46 @@ async def buscar_en_carrefour(termino, context):
     
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.carrefour.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
-    resultados_carrefour = []
+    resultados = []
     
     try:
-        print(f"[Carrefour] Navegando a {url_busqueda}")
         await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
-        
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
-        try:
-            print(f"[Carrefour] Esperando tarjetas...")
-            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
-            print(f"[Carrefour] Tarjetas encontradas, esperando precios...")
-            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
-            await page.wait_for_timeout(TIMEOUT_WAIT)
-        except Exception as e:
-            print(f"[Carrefour] ⚠ Timeout al esperar elementos: {e}")
-            await page.close()
-            return []
         
+        await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
-        print(f"[Carrefour] Total tarjetas en grilla: {len(tarjetas)}")
         
-        palabras_buscadas = termino.lower().split()
-        productos_agregados = 0
-        
-        for tarjeta in tarjetas:
-            if productos_agregados >= 7:
-                break
+        for tarjeta in tarjetas[:5]:
+            titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
+            precio_el = tarjeta.locator(".valtech-carrefourar-product-price-0-x-currencyContainer")
             
-            titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
-            
-            if await titulo_elemento.count() > 0:
-                titulo = await titulo_elemento.first.text_content()
-                titulo_minuscula = titulo.strip().lower() if titulo else ""
+            if await titulo_el.count() > 0 and await precio_el.count() > 0:
+                titulo = await titulo_el.first.text_content()
+                precio_texto = await precio_el.first.text_content()
                 
-                if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    precio_elemento = tarjeta.locator("#priceContainer")
-                    
-                    if await precio_elemento.count() > 0:
-                        precio_texto = await precio_elemento.first.text_content()
-                        precio_numero = limpiar_precio(precio_texto)
-                        
-                        precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
-                        if await precio_unidad_elemento.count() > 0:
-                            precio_unidad_texto = await precio_unidad_elemento.first.text_content()
-                        else:
-                            precio_unidad_texto = "No informado"
-                        
-                        url_relativa = await tarjeta.get_attribute("href")
-                        url_final = f"https://www.carrefour.com.ar{url_relativa}" if url_relativa else url_busqueda
-                        
-                        resultados_carrefour.append({
-                            "supermercado": "Carrefour",
-                            "producto_encontrado": titulo.strip(),
-                            "precio": precio_numero,
-                            "precio_x_unidad": precio_unidad_texto,
-                            "url": url_final,
-                            "estado": "ok"
-                        })
-                        productos_agregados += 1
-        
+                try:
+                    unidad_el = tarjeta.locator(".valtech-carrefourar-dynamic-weight-price-0-x-currencyContainer")
+                    precio_unidad = await unidad_el.first.text_content() if await unidad_el.count() > 0 else "No informado"
+                except:
+                    precio_unidad = "No informado"
+                
+                url_relativa = await tarjeta.get_attribute("href")
+                url_final = f"https://www.carrefour.com.ar{url_relativa}" if url_relativa else url_busqueda
+                
+                resultados.append({
+                    "supermercado": "Carrefour",
+                    "titulo": titulo.strip(),
+                    "precio": limpiar_precio(precio_texto),
+                    "precio_x_unidad": precio_unidad.replace("\n", " ").strip(),
+                    "url": url_final
+                })
+                
         await page.close()
-        print(f"[Carrefour] ✓ Encontrados: {len(resultados_carrefour)} productos")
-        return resultados_carrefour
-        
+        return resultados
     except Exception as e:
-        print(f"[Carrefour] ✗ Error crítico: {e}")
+        print(f"[Carrefour] ⚠ Error o Timeout: {e}")
         await page.close()
         return []
-
 
 async def buscar_en_changomas(termino, context):
     print(f"[ChangoMás] Iniciando búsqueda: '{termino}'...")
@@ -188,75 +129,40 @@ async def buscar_en_changomas(termino, context):
     
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.masonline.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
-    resultados_changomas = []
+    resultados = []
     
     try:
-        print(f"[ChangoMás] Navegando a {url_busqueda}")
         await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
-        
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
-        try:
-            print(f"[ChangoMás] Esperando tarjetas...")
-            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
-            print(f"[ChangoMás] Tarjetas encontradas, esperando precios...")
-            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
-            await page.wait_for_timeout(TIMEOUT_WAIT)
-        except Exception as e:
-            print(f"[ChangoMás] ⚠ Timeout al esperar elementos: {e}")
-            await page.close()
-            return []
         
+        await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
-        print(f"[ChangoMás] Total tarjetas en grilla: {len(tarjetas)}")
         
-        palabras_buscadas = termino.lower().split()
-        productos_agregados = 0
-        
-        for tarjeta in tarjetas:
-            if productos_agregados >= 7:
-                break
+        for tarjeta in tarjetas[:5]:
+            titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
+            precio_el = tarjeta.locator(".valtech-gdn-dynamic-product-1-x-currencyContainer")
             
-            titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
-            
-            if await titulo_elemento.count() > 0:
-                titulo = await titulo_elemento.first.text_content()
-                titulo_minuscula = titulo.strip().lower() if titulo else ""
+            if await titulo_el.count() > 0 and await precio_el.count() > 0:
+                titulo = await titulo_el.first.text_content()
+                precio_texto = await precio_el.first.text_content()
                 
-                if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    precio_elemento = tarjeta.locator("#priceContainer")
-                    
-                    if await precio_elemento.count() > 0:
-                        precio_texto = await precio_elemento.first.text_content()
-                        precio_numero = limpiar_precio(precio_texto)
-                        
-                        precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
-                        if await precio_unidad_elemento.count() > 0:
-                            precio_unidad_texto = await precio_unidad_elemento.first.text_content()
-                        else:
-                            precio_unidad_texto = "No informado"
-                        
-                        url_relativa = await tarjeta.get_attribute("href")
-                        url_final = f"https://www.masonline.com.ar{url_relativa}" if url_relativa else url_busqueda
-                        
-                        resultados_changomas.append({
-                            "supermercado": "ChangoMás",
-                            "producto_encontrado": titulo.strip(),
-                            "precio": precio_numero,
-                            "precio_x_unidad": precio_unidad_texto,
-                            "url": url_final,
-                            "estado": "ok"
-                        })
-                        productos_agregados += 1
-        
+                url_relativa = await tarjeta.get_attribute("href")
+                url_final = f"https://www.masonline.com.ar{url_relativa}" if url_relativa else url_busqueda
+                
+                resultados.append({
+                    "supermercado": "ChangoMás",
+                    "titulo": titulo.strip(),
+                    "precio": limpiar_precio(precio_texto),
+                    "precio_x_unidad": "No informado",
+                    "url": url_final
+                })
+                
         await page.close()
-        print(f"[ChangoMás] ✓ Encontrados: {len(resultados_changomas)} productos")
-        return resultados_changomas
-        
+        return resultados
     except Exception as e:
-        print(f"[ChangoMás] ✗ Error crítico: {e}")
+        print(f"[ChangoMás] ⚠ Error o Timeout: {e}")
         await page.close()
         return []
-
 
 async def buscar_en_dia(termino, context):
     print(f"[Dia] Iniciando búsqueda: '{termino}'...")
@@ -265,75 +171,40 @@ async def buscar_en_dia(termino, context):
 
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://diaonline.supermercadosdia.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
-    resultados_dia = []
+    resultados = []
     
     try:
-        print(f"[Dia] Navegando a {url_busqueda}")
         await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
-        
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
-        try:
-            print(f"[Dia] Esperando tarjetas...")
-            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
-            print(f"[Dia] Tarjetas encontradas, esperando precios...")
-            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
-            await page.wait_for_timeout(TIMEOUT_WAIT)
-        except Exception as e:
-            print(f"[Dia] ⚠ Timeout al esperar elementos: {e}")
-            await page.close()
-            return []
-            
+        
+        await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
-        print(f"[Dia] Total tarjetas en grilla: {len(tarjetas)}")
         
-        palabras_buscadas = termino.lower().split()
-        productos_agregados = 0
-        
-        for tarjeta in tarjetas:
-            if productos_agregados >= 7:
-                break
+        for tarjeta in tarjetas[:5]:
+            titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
+            precio_el = tarjeta.locator(".diaio-store-5-x-sellingPriceValue")
             
-            titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
-            
-            if await titulo_elemento.count() > 0:
-                titulo = await titulo_elemento.first.text_content()
-                titulo_minuscula = titulo.strip().lower() if titulo else ""
+            if await titulo_el.count() > 0 and await precio_el.count() > 0:
+                titulo = await titulo_el.first.text_content()
+                precio_texto = await precio_el.first.text_content()
                 
-                if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    precio_elemento = tarjeta.locator("#priceContainer")
-                    
-                    if await precio_elemento.count() > 0:
-                        precio_texto = await precio_elemento.first.text_content()
-                        precio_numero = limpiar_precio(precio_texto)
-                        
-                        precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
-                        if await precio_unidad_elemento.count() > 0:
-                            precio_unidad_texto = await precio_unidad_elemento.first.text_content()
-                        else:
-                            precio_unidad_texto = "No informado"
-                        
-                        url_relativa = await tarjeta.get_attribute("href")
-                        url_final = f"https://diaonline.supermercadosdia.com.ar{url_relativa}" if url_relativa else url_busqueda
-                        
-                        resultados_dia.append({
-                            "supermercado": "Dia",
-                            "producto_encontrado": titulo.strip(),
-                            "precio": precio_numero,
-                            "precio_x_unidad": precio_unidad_texto,
-                            "url": url_final,
-                            "estado": "ok"
-                        })
-                        productos_agregados += 1
-        
+                url_relativa = await tarjeta.get_attribute("href")
+                url_final = f"https://diaonline.supermercadosdia.com.ar{url_relativa}" if url_relativa else url_busqueda
+                
+                resultados.append({
+                    "supermercado": "Dia",
+                    "titulo": titulo.strip(),
+                    "precio": limpiar_precio(precio_texto),
+                    "precio_x_unidad": "No informado",
+                    "url": url_final
+                })
+                
         await page.close()
-        print(f"[Dia] ✓ Encontrados: {len(resultados_dia)} productos")
-        return resultados_dia
-        
+        return resultados
     except Exception as e:
-        print(f"[Dia] ✗ Error crítico: {e}")
+        print(f"[Dia] ⚠ Error o Timeout: {e}")
         await page.close()
         return []
-
 
 async def buscar_en_jumbo(termino, context):
     print(f"[Jumbo] Iniciando búsqueda: '{termino}'...")
@@ -342,75 +213,46 @@ async def buscar_en_jumbo(termino, context):
 
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.jumbo.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
-    resultados_jumbo = []
+    resultados = []
     
     try:
-        print(f"[Jumbo] Navegando a {url_busqueda}")
         await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
-        
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
-        try:
-            print(f"[Jumbo] Esperando tarjetas...")
-            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
-            print(f"[Jumbo] Tarjetas encontradas, esperando precios...")
-            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
-            await page.wait_for_timeout(TIMEOUT_WAIT)
-        except Exception as e:
-            print(f"[Jumbo] ⚠ Timeout al esperar elementos: {e}")
-            await page.close()
-            return []
         
+        await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
-        print(f"[Jumbo] Total tarjetas en grilla: {len(tarjetas)}")
         
-        palabras_buscadas = termino.lower().split()
-        productos_agregados = 0
-        
-        for tarjeta in tarjetas:
-            if productos_agregados >= 7:
-                break
+        for tarjeta in tarjetas[:5]:
+            titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
+            precio_el = tarjeta.locator(".vtex-price-format-gallery")
             
-            titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
-            
-            if await titulo_elemento.count() > 0:
-                titulo = await titulo_elemento.first.text_content()
-                titulo_minuscula = titulo.strip().lower() if titulo else ""
+            if await titulo_el.count() > 0 and await precio_el.count() > 0:
+                titulo = await titulo_el.first.text_content()
+                precio_texto = await precio_el.first.text_content()
                 
-                if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    precio_elemento = tarjeta.locator("#priceContainer")
-                    
-                    if await precio_elemento.count() > 0:
-                        precio_texto = await precio_elemento.first.text_content()
-                        precio_numero = limpiar_precio(precio_texto)
-                        
-                        precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
-                        if await precio_unidad_elemento.count() > 0:
-                            precio_unidad_texto = await precio_unidad_elemento.first.text_content()
-                        else:
-                            precio_unidad_texto = "No informado"
-                        
-                        url_relativa = await tarjeta.get_attribute("href")
-                        url_final = f"https://www.jumbo.com.ar/{url_relativa}" if url_relativa else url_busqueda
-                        
-                        resultados_jumbo.append({
-                            "supermercado": "Jumbo",
-                            "producto_encontrado": titulo.strip(),
-                            "precio": precio_numero,
-                            "precio_x_unidad": precio_unidad_texto,
-                            "url": url_final,
-                            "estado": "ok"
-                        })
-                        productos_agregados += 1
-        
+                try:
+                    unidad_el = tarjeta.locator(".vtex-custom-unit-price")
+                    precio_unidad = await unidad_el.first.text_content() if await unidad_el.count() > 0 else "No informado"
+                except:
+                    precio_unidad = "No informado"
+                
+                url_relativa = await tarjeta.get_attribute("href")
+                url_final = f"https://www.jumbo.com.ar{url_relativa}" if url_relativa else url_busqueda
+                
+                resultados.append({
+                    "supermercado": "Jumbo",
+                    "titulo": titulo.strip(),
+                    "precio": limpiar_precio(precio_texto),
+                    "precio_x_unidad": precio_unidad.replace("\n", " ").strip(),
+                    "url": url_final
+                })
+                
         await page.close()
-        print(f"[Jumbo] ✓ Encontrados: {len(resultados_jumbo)} productos")
-        return resultados_jumbo
-        
+        return resultados
     except Exception as e:
-        print(f"[Jumbo] ✗ Error crítico: {e}")
+        print(f"[Jumbo] ⚠ Error o Timeout: {e}")
         await page.close()
         return []
-
 
 async def orquestador_de_busqueda(termino):
     print(f"\n{'='*60}")
@@ -436,14 +278,14 @@ async def orquestador_de_busqueda(termino):
         resultados_totales = []
         
         print(f"\n{'='*60}")
-        print("[RESUMEN]")
+        print("[RESUMEN DE EXTRACCIÓN]")
         print(f"{'='*60}")
         
         for i, (nombre, resultado) in enumerate(zip(supermercados_nombres, tanda_1)):
             if isinstance(resultado, Exception):
                 print(f"[{nombre}] ✗ EXCEPCIÓN: {resultado}")
             elif isinstance(resultado, list):
-                print(f"[{nombre}] → {len(resultado)} productos")
+                print(f"[{nombre}] ✓ {len(resultado)} productos")
                 resultados_totales.extend(resultado)
             else:
                 print(f"[{nombre}] ✗ Resultado inesperado: {type(resultado)}")
@@ -454,6 +296,7 @@ async def orquestador_de_busqueda(termino):
         
         await browser.close()
         
+        # Filtramos precios en 0 y ordenamos por el más barato
         resultados_limpios = [r for r in resultados_totales if r.get("precio") is not None and r.get("precio") > 0]
         resultados_limpios.sort(key=lambda x: x["precio"])
         
