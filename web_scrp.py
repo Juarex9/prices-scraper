@@ -2,17 +2,21 @@ import asyncio
 from playwright.async_api import async_playwright
 import urllib.parse
 
+TIMEOUT_GOTO = 90000
+TIMEOUT_SELECTOR = 30000
+TIMEOUT_WAIT = 3000
+
+
 async def bloquear_recursos_pesados(route):
-    # Si lo que intenta descargar es una imagen, estilo, fuente de texto o video, lo bloqueamos
     if route.request.resource_type in ["image", "stylesheet", "font", "media"]:
         await route.abort()
     else:
-        # Si es HTML o datos de la API, lo dejamos pasar
         await route.continue_()
 
+
 def limpiar_precio(precio_texto):
-    if not precio_texto: return 0.0
-    # Sumamos replace("\n", "") por si text_content() trae saltos de línea
+    if not precio_texto:
+        return 0.0
     texto = precio_texto.replace("$", "").replace(" ", "").replace("\xa0", "").replace("\n", "").strip()
     texto = texto.replace(".", "").replace(",", ".")
     try:
@@ -20,9 +24,10 @@ def limpiar_precio(precio_texto):
     except:
         return 0.0
 
+
 async def buscar_en_vea(termino, context):
-    print(f"[Vea] Buscando en grilla: '{termino}'...")
-    page = await context.new_page() 
+    print(f"[Vea] Iniciando búsqueda: '{termino}'...")
+    page = await context.new_page()
     await page.route("**/*", bloquear_recursos_pesados)
     
     termino_encodeado = urllib.parse.quote(termino)
@@ -31,28 +36,31 @@ async def buscar_en_vea(termino, context):
     resultados_vea = []
     
     try:
-        await page.goto(url_busqueda, timeout=60000)
+        print(f"[Vea] Navegando a {url_busqueda}")
+        await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
         
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
         
         try:
-            await page.wait_for_selector(selector_tarjetas, timeout=15000)
-            await page.wait_for_selector("#priceContainer", timeout=15000)
-            await page.wait_for_timeout(2000) 
-        except:
-            print(f"[Vea] No cargaron las tarjetas o los precios a tiempo.")
+            print(f"[Vea] Esperando tarjetas...")
+            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
+            print(f"[Vea] Tarjetas encontradas, esperando precios...")
+            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
+            await page.wait_for_timeout(TIMEOUT_WAIT)
+        except Exception as e:
+            print(f"[Vea] ⚠ Timeout al esperar elementos: {e}")
             await page.close()
             return []
         
         tarjetas = await page.locator(selector_tarjetas).all()
-        palabras_buscadas = termino.lower().split()
+        print(f"[Vea] Total tarjetas en grilla: {len(tarjetas)}")
         
-        # --- CAMBIO CLAVE 1: Limitamos a procesar solo 7 tarjetas ---
+        palabras_buscadas = termino.lower().split()
         productos_agregados = 0
         
-        for tarjeta in tarjetas:
+        for i, tarjeta in enumerate(tarjetas):
             if productos_agregados >= 7:
-                break # Si ya tenemos 7, salimos del bucle
+                break
             
             titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             
@@ -61,16 +69,12 @@ async def buscar_en_vea(termino, context):
                 titulo_minuscula = titulo.strip().lower() if titulo else ""
                 
                 if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    
                     precio_elemento = tarjeta.locator("#priceContainer")
                     
                     if await precio_elemento.count() > 0:
                         precio_texto = await precio_elemento.first.text_content()
                         precio_numero = limpiar_precio(precio_texto)
                         
-                        # --- CAMBIO CLAVE 2: Buscar el precio por unidad ---
-                        # Usamos la clase general de VTEX para el precio por medida.
-                        # Vas a tener que confirmar si esta es la clase correcta en Vea.
                         precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
                         if await precio_unidad_elemento.count() > 0:
                             precio_unidad_texto = await precio_unidad_elemento.first.text_content()
@@ -84,30 +88,25 @@ async def buscar_en_vea(termino, context):
                             "supermercado": "Vea",
                             "producto_encontrado": titulo.strip(),
                             "precio": precio_numero,
-                            "precio_x_unidad": precio_unidad_texto, # Guardamos el nuevo dato
+                            "precio_x_unidad": precio_unidad_texto,
                             "url": url_final,
                             "estado": "ok"
                         })
-                        
-                        # Incrementamos el contador solo si encontramos un precio válido
-                        productos_agregados += 1 
+                        productos_agregados += 1
         
         await page.close()
-        
-        if not resultados_vea:
-            print(f"[Vea] DESCARTADO: Ningún producto en la grilla coincidió.")
-            
+        print(f"[Vea] ✓ Encontrados: {len(resultados_vea)} productos")
         return resultados_vea
         
     except Exception as e:
-        print(f"[Vea] Error crítico: {e}")
+        print(f"[Vea] ✗ Error crítico: {e}")
         await page.close()
         return []
-            
+
 
 async def buscar_en_carrefour(termino, context):
-    print(f"[Carrefour] Buscando en grilla: '{termino}'...")
-    page = await context.new_page() 
+    print(f"[Carrefour] Iniciando búsqueda: '{termino}'...")
+    page = await context.new_page()
     await page.route("**/*", bloquear_recursos_pesados)
     
     termino_encodeado = urllib.parse.quote(termino)
@@ -115,21 +114,25 @@ async def buscar_en_carrefour(termino, context):
     resultados_carrefour = []
     
     try:
-        await page.goto(url_busqueda, timeout=60000)
+        print(f"[Carrefour] Navegando a {url_busqueda}")
+        await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
         
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
         try:
-            await page.wait_for_selector(selector_tarjetas, timeout=15000)
-            await page.wait_for_selector("#priceContainer", timeout=15000)
-            await page.wait_for_timeout(2000) 
-        except:
-            print(f"[Carrefour] No cargaron las tarjetas o los precios a tiempo.")
+            print(f"[Carrefour] Esperando tarjetas...")
+            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
+            print(f"[Carrefour] Tarjetas encontradas, esperando precios...")
+            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
+            await page.wait_for_timeout(TIMEOUT_WAIT)
+        except Exception as e:
+            print(f"[Carrefour] ⚠ Timeout al esperar elementos: {e}")
             await page.close()
             return []
         
         tarjetas = await page.locator(selector_tarjetas).all()
-        palabras_buscadas = termino.lower().split()
+        print(f"[Carrefour] Total tarjetas en grilla: {len(tarjetas)}")
         
+        palabras_buscadas = termino.lower().split()
         productos_agregados = 0
         
         for tarjeta in tarjetas:
@@ -166,24 +169,20 @@ async def buscar_en_carrefour(termino, context):
                             "url": url_final,
                             "estado": "ok"
                         })
-                        
                         productos_agregados += 1
         
         await page.close()
-        
-        if not resultados_carrefour:
-            print(f"[Carrefour] DESCARTADO: Ningún producto en la grilla coincidió.")
-            
+        print(f"[Carrefour] ✓ Encontrados: {len(resultados_carrefour)} productos")
         return resultados_carrefour
         
     except Exception as e:
-        print(f"[Carrefour] Error crítico: {e}")
+        print(f"[Carrefour] ✗ Error crítico: {e}")
         await page.close()
         return []
 
 
 async def buscar_en_changomas(termino, context):
-    print(f"[ChangoMás] Buscando en grilla: '{termino}'...")
+    print(f"[ChangoMás] Iniciando búsqueda: '{termino}'...")
     page = await context.new_page()
     await page.route("**/*", bloquear_recursos_pesados)
     
@@ -192,21 +191,25 @@ async def buscar_en_changomas(termino, context):
     resultados_changomas = []
     
     try:
-        await page.goto(url_busqueda, timeout=60000)
+        print(f"[ChangoMás] Navegando a {url_busqueda}")
+        await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
         
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
         try:
-            await page.wait_for_selector(selector_tarjetas, timeout=15000)
-            await page.wait_for_selector("#priceContainer", timeout=15000)
-            await page.wait_for_timeout(2000) 
-        except:
-            print(f"[ChangoMás] No cargaron las tarjetas o los precios a tiempo.")
+            print(f"[ChangoMás] Esperando tarjetas...")
+            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
+            print(f"[ChangoMás] Tarjetas encontradas, esperando precios...")
+            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
+            await page.wait_for_timeout(TIMEOUT_WAIT)
+        except Exception as e:
+            print(f"[ChangoMás] ⚠ Timeout al esperar elementos: {e}")
             await page.close()
             return []
         
         tarjetas = await page.locator(selector_tarjetas).all()
-        palabras_buscadas = termino.lower().split()
+        print(f"[ChangoMás] Total tarjetas en grilla: {len(tarjetas)}")
         
+        palabras_buscadas = termino.lower().split()
         productos_agregados = 0
         
         for tarjeta in tarjetas:
@@ -243,24 +246,21 @@ async def buscar_en_changomas(termino, context):
                             "url": url_final,
                             "estado": "ok"
                         })
-                        
                         productos_agregados += 1
         
         await page.close()
-        
-        if not resultados_changomas:
-            print(f"[ChangoMás] DESCARTADO: Ningún producto en la grilla coincidió.")
-            
+        print(f"[ChangoMás] ✓ Encontrados: {len(resultados_changomas)} productos")
         return resultados_changomas
         
     except Exception as e:
-        print(f"[ChangoMás] Error crítico: {e}")
+        print(f"[ChangoMás] ✗ Error crítico: {e}")
         await page.close()
         return []
 
+
 async def buscar_en_dia(termino, context):
-    print(f"[Dia] Buscando en grilla: '{termino}'...")
-    page = await context.new_page() 
+    print(f"[Dia] Iniciando búsqueda: '{termino}'...")
+    page = await context.new_page()
     await page.route("**/*", bloquear_recursos_pesados)
 
     termino_encodeado = urllib.parse.quote(termino)
@@ -268,21 +268,25 @@ async def buscar_en_dia(termino, context):
     resultados_dia = []
     
     try:
-        await page.goto(url_busqueda, timeout=60000)
+        print(f"[Dia] Navegando a {url_busqueda}")
+        await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
         
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
         try:
-            await page.wait_for_selector(selector_tarjetas, timeout=15000)
-            await page.wait_for_selector("#priceContainer", timeout=15000)
-            await page.wait_for_timeout(2000) 
-        except:
-            print(f"[Dia] No cargaron las tarjetas o los precios a tiempo.")
+            print(f"[Dia] Esperando tarjetas...")
+            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
+            print(f"[Dia] Tarjetas encontradas, esperando precios...")
+            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
+            await page.wait_for_timeout(TIMEOUT_WAIT)
+        except Exception as e:
+            print(f"[Dia] ⚠ Timeout al esperar elementos: {e}")
             await page.close()
             return []
             
         tarjetas = await page.locator(selector_tarjetas).all()
-        palabras_buscadas = termino.lower().split()
+        print(f"[Dia] Total tarjetas en grilla: {len(tarjetas)}")
         
+        palabras_buscadas = termino.lower().split()
         productos_agregados = 0
         
         for tarjeta in tarjetas:
@@ -319,55 +323,52 @@ async def buscar_en_dia(termino, context):
                             "url": url_final,
                             "estado": "ok"
                         })
-                        
                         productos_agregados += 1
         
         await page.close()
-        
-        if not resultados_dia:
-            print(f"[Dia] DESCARTADO: Ningún producto en la grilla coincidió.")
-            
+        print(f"[Dia] ✓ Encontrados: {len(resultados_dia)} productos")
         return resultados_dia
         
     except Exception as e:
-        print(f"[Dia] Error crítico: {e}")
+        print(f"[Dia] ✗ Error crítico: {e}")
         await page.close()
         return []
 
+
 async def buscar_en_jumbo(termino, context):
-    print(f"[Jumbo] Buscando en grilla: '{termino}'...")
-    page = await context.new_page() 
+    print(f"[Jumbo] Iniciando búsqueda: '{termino}'...")
+    page = await context.new_page()
     await page.route("**/*", bloquear_recursos_pesados)
 
     termino_encodeado = urllib.parse.quote(termino)
     url_busqueda = f"https://www.jumbo.com.ar/{termino_encodeado}?_q={termino_encodeado}&map=ft"
-
     resultados_jumbo = []
     
-    
     try:
-        await page.goto(url_busqueda, timeout=60000)
+        print(f"[Jumbo] Navegando a {url_busqueda}")
+        await page.goto(url_busqueda, timeout=TIMEOUT_GOTO)
         
         selector_tarjetas = ".vtex-product-summary-2-x-clearLink"
-        
         try:
-            await page.wait_for_selector(selector_tarjetas, timeout=15000)
-            await page.wait_for_selector("#priceContainer", timeout=15000)
-            await page.wait_for_timeout(2000) 
-        except:
-            print(f"[Jumbo] No cargaron las tarjetas o los precios a tiempo.")
+            print(f"[Jumbo] Esperando tarjetas...")
+            await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
+            print(f"[Jumbo] Tarjetas encontradas, esperando precios...")
+            await page.wait_for_selector("#priceContainer", timeout=TIMEOUT_SELECTOR)
+            await page.wait_for_timeout(TIMEOUT_WAIT)
+        except Exception as e:
+            print(f"[Jumbo] ⚠ Timeout al esperar elementos: {e}")
             await page.close()
             return []
         
         tarjetas = await page.locator(selector_tarjetas).all()
-        palabras_buscadas = termino.lower().split()
+        print(f"[Jumbo] Total tarjetas en grilla: {len(tarjetas)}")
         
-        # --- CAMBIO CLAVE 1: Limitamos a procesar solo 7 tarjetas ---
+        palabras_buscadas = termino.lower().split()
         productos_agregados = 0
         
         for tarjeta in tarjetas:
             if productos_agregados >= 7:
-                break # Si ya tenemos 7, salimos del bucle
+                break
             
             titulo_elemento = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             
@@ -376,16 +377,12 @@ async def buscar_en_jumbo(termino, context):
                 titulo_minuscula = titulo.strip().lower() if titulo else ""
                 
                 if all(palabra in titulo_minuscula for palabra in palabras_buscadas):
-                    
                     precio_elemento = tarjeta.locator("#priceContainer")
                     
                     if await precio_elemento.count() > 0:
                         precio_texto = await precio_elemento.first.text_content()
                         precio_numero = limpiar_precio(precio_texto)
                         
-                        # --- CAMBIO CLAVE 2: Buscar el precio por unidad ---
-                        # Usamos la clase general de VTEX para el precio por medida.
-                        # Vas a tener que confirmar si esta es la clase correcta en Vea.
                         precio_unidad_elemento = tarjeta.locator(".vtex-custom-unit-price")
                         if await precio_unidad_elemento.count() > 0:
                             precio_unidad_texto = await precio_unidad_elemento.first.text_content()
@@ -399,54 +396,65 @@ async def buscar_en_jumbo(termino, context):
                             "supermercado": "Jumbo",
                             "producto_encontrado": titulo.strip(),
                             "precio": precio_numero,
-                            "precio_x_unidad": precio_unidad_texto, # Guardamos el nuevo dato
+                            "precio_x_unidad": precio_unidad_texto,
                             "url": url_final,
                             "estado": "ok"
                         })
-                        
-                        # Incrementamos el contador solo si encontramos un precio válido
-                        productos_agregados += 1 
+                        productos_agregados += 1
         
         await page.close()
-        
-        if not resultados_jumbo:
-            print(f"[Jumbo] DESCARTADO: Ningún producto en la grilla coincidió.")
-            
+        print(f"[Jumbo] ✓ Encontrados: {len(resultados_jumbo)} productos")
         return resultados_jumbo
         
     except Exception as e:
-        print(f"[Jumbo] Error crítico: {e}")
+        print(f"[Jumbo] ✗ Error crítico: {e}")
         await page.close()
         return []
 
-# EL ORQUESTADOR
+
 async def orquestador_de_busqueda(termino):
-    print("Iniciando motor asíncrono Playwright...")
+    print(f"\n{'='*60}")
+    print(f"[ORQUESTADOR] Buscando: '{termino.upper()}'")
+    print(f"{'='*60}\n")
+    
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True) 
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         
-        print("[Orquestador] Iniciando Tanda 1 (Carrefour y ChangoMás)...")
+        print("[ORQUESTADOR] Iniciando búsquedas en paralelo...")
+        
         tanda_1 = await asyncio.gather(
             buscar_en_carrefour(termino, context),
-            buscar_en_changomas(termino, context)
-        )
-    
-        print("[Orquestador] Iniciando Tanda 2 (Vea, Dia y Jumbo)...")
-        tanda_2 = await asyncio.gather(
+            buscar_en_changomas(termino, context),
             buscar_en_vea(termino, context),
             buscar_en_dia(termino, context),
-            buscar_en_jumbo(termino, context)
-        )   
-    
-        # Unificamos todos los resultados de ambas tandas en una sola lista
-        # tanda_1[0] -> Carrefour | tanda_1[1] -> ChangoMás
-        # tanda_2[0] -> Vea       | tanda_2[1] -> Dia        | tanda_2[2] -> Jumbo
-        resultados_totales = tanda_1[0] + tanda_1[1] + tanda_2[0] + tanda_2[1] + tanda_2[2]
-    
+            buscar_en_jumbo(termino, context),
+            return_exceptions=True
+        )
+        
+        supermercados_nombres = ["Carrefour", "ChangoMás", "Vea", "Dia", "Jumbo"]
+        resultados_totales = []
+        
+        print(f"\n{'='*60}")
+        print("[RESUMEN]")
+        print(f"{'='*60}")
+        
+        for i, (nombre, resultado) in enumerate(zip(supermercados_nombres, tanda_1)):
+            if isinstance(resultado, Exception):
+                print(f"[{nombre}] ✗ EXCEPCIÓN: {resultado}")
+            elif isinstance(resultado, list):
+                print(f"[{nombre}] → {len(resultado)} productos")
+                resultados_totales.extend(resultado)
+            else:
+                print(f"[{nombre}] ✗ Resultado inesperado: {type(resultado)}")
+        
+        print(f"{'='*60}")
+        print(f"TOTAL: {len(resultados_totales)} productos encontrados")
+        print(f"{'='*60}\n")
+        
         await browser.close()
-            
-        resultados_limpios = [r for r in resultados_totales if r["precio"] is not None]
+        
+        resultados_limpios = [r for r in resultados_totales if r.get("precio") is not None and r.get("precio") > 0]
         resultados_limpios.sort(key=lambda x: x["precio"])
-    
+        
         return resultados_limpios
