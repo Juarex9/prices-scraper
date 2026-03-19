@@ -1,8 +1,4 @@
-fastapi
-uvicorn
+flask
 playwright
 jinja2
-python-multipart
-supabase
 python-dotenv
-slowapi
