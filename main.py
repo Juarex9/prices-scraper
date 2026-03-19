@@ -1,7 +1,9 @@
 import os
 import re
+import asyncio
 import hashlib
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Optional
@@ -13,13 +15,12 @@ from fastapi.templating import Jinja2Templates
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from web_scrp import orquestador_de_busqueda
 
 load_dotenv()
 
 limiter = Limiter(key_func=get_remote_address)
-
 templates = Jinja2Templates(directory="templates")
+executor = ThreadPoolExecutor(max_workers=2)
 
 
 class TTLCache:
@@ -56,6 +57,16 @@ class TTLCache:
 cache = TTLCache(max_size=100, ttl_seconds=300)
 
 
+def ejecutar_scraper(termino: str) -> list:
+    from web_scrp import orquestador_de_busqueda
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(orquestador_de_busqueda(termino))
+    finally:
+        loop.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[Startup] Cache TTL: 5 minutos")
@@ -63,7 +74,7 @@ async def lifespan(app: FastAPI):
     yield
     print("[Shutdown] Cerrando conexiones...")
     cache.clear()
-    print("[Shutdown] Completado")
+    executor.shutdown(wait=False)
 
 
 app = FastAPI(
@@ -133,21 +144,20 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     response.headers["X-Cache"] = "MISS"
     response.headers["Cache-Control"] = "public, max-age=300"
 
+    loop = asyncio.get_event_loop()
+    resultados_raw = await loop.run_in_executor(executor, ejecutar_scraper, termino)
+
     resultados = []
-    try:
-        resultados_raw = await orquestador_de_busqueda(termino)
-        if resultados_raw:
-            for item in resultados_raw:
-                resultados.append({
-                    "supermercado_id": item.get('supermercado', 'Unknown'),
-                    "titulo_encontrado": item.get('producto_encontrado', ''),
-                    "precio": item.get('precio', 0),
-                    "url_compra": item.get('url', ''),
-                    "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
-                    "fecha_actualizacion": datetime.utcnow().isoformat()
-                })
-    except Exception as e:
-        print(f"[Buscar] Error en scraper: {e}")
+    if resultados_raw:
+        for item in resultados_raw:
+            resultados.append({
+                "supermercado_id": item.get('supermercado', 'Unknown'),
+                "titulo_encontrado": item.get('producto_encontrado', ''),
+                "precio": item.get('precio', 0),
+                "url_compra": item.get('url', ''),
+                "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
+                "fecha_actualizacion": datetime.utcnow().isoformat()
+            })
 
     cache.set(cache_key, {"resultados": resultados})
 
