@@ -1,46 +1,45 @@
+import sys
 import asyncio
-from threading import Thread
-from flask import Flask, render_template, request
+
+# --- PARCHE PARA WINDOWS + PLAYWRIGHT ---
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+# ----------------------------------------
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.templating import Jinja2Templates
 from web_scrp import orquestador_de_busqueda
 
-app = Flask(__name__)
+app = FastAPI(title="Buscador Precios en Vivo (v1.0)")
 
-cache = {}
+app = FastAPI(title="Buscador Precios en Vivo (v1.0)")
 
+# Apuntamos a la carpeta de plantillas
+templates = Jinja2Templates(directory="templates")
 
-def buscar_en_thread(termino):
-    resultados_raw = asyncio.run(orquestador_de_busqueda(termino))
-    resultados = []
-    for item in resultados_raw:
-        resultados.append({
-            "supermercado_id": item.get("supermercado", "Unknown"),
-            "titulo_encontrado": item.get("producto_encontrado", ""),
-            "precio": item.get("precio", 0),
-            "url_compra": item.get("url", ""),
-            "precio_x_unidad": item.get("precio_x_unidad", "No informado"),
+@app.get("/")
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/buscar")
+async def buscar_en_vivo(request: Request, termino: str):
+    if not termino or len(termino.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Ingresá un término válido.")
+    
+    termino_limpio = termino.strip().lower()
+    print(f"[API] Iniciando scraping en vivo para: '{termino_limpio}'")
+    
+    try:
+        # Llamamos al scraper en vivo
+        resultados_reales = await orquestador_de_busqueda(termino_limpio)
+        
+        # Renderizamos la vista con los resultados frescos
+        return templates.TemplateResponse("resultados.html", {
+            "request": request,
+            "termino": termino_limpio,
+            "resultados": resultados_reales
         })
-    cache[termino] = resultados
-    return resultados
-
-
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-
-@app.route("/buscar")
-def buscar():
-    termino = request.args.get("termino", "").strip().lower()
-
-    if len(termino) < 2:
-        return render_template("resultados.html", termino=termino, resultados=[], error="Mínimo 2 caracteres")
-
-    if termino in cache:
-        return render_template("resultados.html", termino=termino, resultados=cache[termino])
-
-    resultados = buscar_en_thread(termino)
-    return render_template("resultados.html", termino=termino, resultados=resultados)
-
-
-if __name__ == "__main__":
-    app.run(debug=True, port=8000)
+        
+    except Exception as e:
+        print(f"[Error] {e}")
+        raise HTTPException(status_code=500, detail="Error en el servidor.")
