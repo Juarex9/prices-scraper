@@ -10,9 +10,20 @@
 
     <div class="max-w-4xl mx-auto">
         <div class="flex items-center justify-between mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">
-                Precios para: <span class="text-blue-600 capitalize">{{ termino }}</span>
-            </h1>
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">
+                    Precios para: <span class="text-blue-600 capitalize">{{ termino }}</span>
+                </h1>
+                {% if fuente == "scraper" %}
+                <p class="text-sm text-orange-600 mt-1">
+                    ⚡ Resultados obtenidos en tiempo real de los supermercados
+                </p>
+                {% elif fuente == "bdd" %}
+                <p class="text-sm text-green-600 mt-1">
+                    📊 Resultados de la base de datos
+                </p>
+                {% endif %}
+            </div>
             <a href="/" class="text-blue-500 hover:text-blue-700 font-semibold underline">← Nueva Búsqueda</a>
         </div>
 

@@ -15,6 +15,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from supabase import create_client, Client
 
+from web_scrp import orquestador_de_busqueda
+
 load_dotenv()
 
 SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
@@ -114,21 +116,21 @@ def home(request: Request, response: Response):
 async def buscar_producto(request: Request, termino: str, response: Response):
     if not termino or not termino.strip():
         raise HTTPException(status_code=400, detail="El término de búsqueda no puede estar vacío")
-    
+
     termino = termino.strip().lower()
-    
+
     if len(termino) < 2:
         raise HTTPException(status_code=400, detail="El término de búsqueda debe tener al menos 2 caracteres")
-    
+
     if len(termino) > 100:
         raise HTTPException(status_code=400, detail="El término de búsqueda es demasiado largo")
-    
+
     if not re.match(r'^[\w\sáéíóúüñÁÉÍÓÚÜÑ]+$', termino):
         raise HTTPException(
             status_code=400,
             detail="El término de búsqueda contiene caracteres no permitidos"
         )
-    
+
     cache_key = get_cache_key(termino)
     cached_result = cache.get(cache_key)
     if cached_result:
@@ -140,17 +142,18 @@ async def buscar_producto(request: Request, termino: str, response: Response):
                 "request": request,
                 "termino": termino,
                 "resultados": cached_result["resultados"],
-                "cached": True
+                "cached": True,
+                "fuente": cached_result.get("fuente", "bdd")
             }
         )
-    
+
     response.headers["X-Cache"] = "MISS"
     response.headers["Cache-Control"] = "public, max-age=300"
-    
+
     precios_data = supabase.table("historial_precios").select(
         "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
     ).ilike("titulo_encontrado", f"%{termino}%").order("precio", desc=False).limit(50).execute()
-    
+
     resultados_limpios = []
     for item in precios_data.data or []:
         resultados_limpios.append({
@@ -161,15 +164,39 @@ async def buscar_producto(request: Request, termino: str, response: Response):
             "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
             "fecha_actualizacion": item.get('fecha_captura', '')
         })
-    
-    cache.set(cache_key, {"resultados": resultados_limpios})
-    
+
+    fuente = "bdd"
+
+    if not resultados_limpios:
+        print(f"[Buscar] Sin resultados en BDD para '{termino}', consultando supermercados en tiempo real...")
+        try:
+            resultados_scraper = await orquestador_de_busqueda(termino)
+            if resultados_scraper:
+                for item in resultados_scraper:
+                    resultados_limpios.append({
+                        "supermercado_id": item.get('supermercado', 'Unknown'),
+                        "titulo_encontrado": item.get('producto_encontrado', ''),
+                        "precio": item.get('precio', 0),
+                        "url_compra": item.get('url', ''),
+                        "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
+                        "fecha_actualizacion": datetime.utcnow().isoformat()
+                    })
+                fuente = "scraper"
+                print(f"[Buscar] Scraper encontró {len(resultados_limpios)} productos")
+            else:
+                print(f"[Buscar] Scraper tampoco encontró resultados")
+        except Exception as e:
+            print(f"[Buscar] Error en scraper: {e}")
+
+    cache.set(cache_key, {"resultados": resultados_limpios, "fuente": fuente})
+
     return templates.TemplateResponse(
         "resultados.html",
         {
             "request": request,
             "termino": termino,
-            "resultados": resultados_limpios
+            "resultados": resultados_limpios,
+            "fuente": fuente
         }
     )
 
