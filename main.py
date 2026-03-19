@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import asyncio
 import hashlib
 from collections import OrderedDict
@@ -59,7 +60,10 @@ cache = TTLCache(max_size=100, ttl_seconds=300)
 
 def ejecutar_scraper(termino: str) -> list:
     from web_scrp import orquestador_de_busqueda
-    loop = asyncio.new_event_loop()
+    if sys.platform == "win32":
+        loop = asyncio.SelectorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(orquestador_de_busqueda(termino))
