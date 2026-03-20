@@ -42,7 +42,7 @@ async def buscar_en_vea(termino, context):
         await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
         
-        for tarjeta in tarjetas[:5]: # Agarramos las 5 primeras
+        for tarjeta in tarjetas[:10]: 
             titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             precio_el = tarjeta.locator(".vtex-product-price-1-x-currencyContainer, #priceContainer").first
             
@@ -90,7 +90,7 @@ async def buscar_en_carrefour(termino, context):
         await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
         
-        for tarjeta in tarjetas[:5]:
+        for tarjeta in tarjetas[:10]:
             titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             precio_el = tarjeta.locator(".valtech-carrefourar-product-price-0-x-currencyContainer")
             
@@ -138,7 +138,7 @@ async def buscar_en_changomas(termino, context):
         await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
         
-        for tarjeta in tarjetas[:5]:
+        for tarjeta in tarjetas[:10]:
             titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             precio_el = tarjeta.locator(".valtech-gdn-dynamic-product-1-x-currencyContainer")
             
@@ -180,7 +180,7 @@ async def buscar_en_dia(termino, context):
         await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
         
-        for tarjeta in tarjetas[:5]:
+        for tarjeta in tarjetas[:10]:
             titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             precio_el = tarjeta.locator(".diaio-store-5-x-sellingPriceValue")
             
@@ -222,7 +222,7 @@ async def buscar_en_jumbo(termino, context):
         await page.wait_for_selector(selector_tarjetas, timeout=TIMEOUT_SELECTOR)
         tarjetas = await page.locator(selector_tarjetas).all()
         
-        for tarjeta in tarjetas[:5]:
+        for tarjeta in tarjetas[:10]:
             titulo_el = tarjeta.locator(".vtex-product-summary-2-x-nameContainer")
             precio_el = tarjeta.locator(".vtex-price-format-gallery")
             
