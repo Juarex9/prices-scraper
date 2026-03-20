@@ -147,17 +147,33 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     response.headers["X-Cache"] = "MISS"
     response.headers["Cache-Control"] = "public, max-age=300"
     
+    # --- MEJORA 1: Filtro de las últimas 24 horas ---
+    limite_tiempo = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    
     precios_data = supabase.table("historial_precios").select(
         "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
-    ).ilike("titulo_encontrado", f"%{termino}%").order("precio", desc=False).limit(50).execute()
+    ).ilike("titulo_encontrado", f"%{termino}%")\
+     .gte("fecha_captura", limite_tiempo)\
+     .order("precio", desc=False).limit(50).execute()
     
+    # --- MEJORA 2: Escudo Anti-Duplicados por URL ---
     resultados_limpios = []
+    urls_vistas = set()
+    
     for item in precios_data.data or []:
+        url_actual = item.get('url_compra', '')
+        
+        # Si la URL ya existe en el set, es un duplicado, lo ignoramos.
+        if url_actual in urls_vistas and url_actual != '':
+            continue
+            
+        urls_vistas.add(url_actual)
+        
         resultados_limpios.append({
             "supermercado_id": item.get('supermercados', {}).get('nombre', 'Unknown'),
             "titulo_encontrado": item.get('titulo_encontrado', ''),
             "precio": item.get('precio', 0),
-            "url_compra": item.get('url_compra', ''),
+            "url_compra": url_actual,
             "precio_x_unidad": item.get('precio_x_unidad', 'No informado'),
             "fecha_actualizacion": item.get('fecha_captura', '')
         })
