@@ -147,16 +147,25 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     response.headers["X-Cache"] = "MISS"
     response.headers["Cache-Control"] = "public, max-age=300"
     
-    # --- MEJORA 1: Filtro de las últimas 24 horas ---
     limite_tiempo = (datetime.utcnow() - timedelta(hours=24)).isoformat()
     
-    precios_data = supabase.table("historial_precios").select(
-        "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
-    ).ilike("titulo_encontrado", f"%{termino}%")\
-     .gte("fecha_captura", limite_tiempo)\
-     .order("precio", desc=False).limit(50).execute()
+    try:
+        precios_data = supabase.table("historial_precios").select(
+            "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
+        ).ilike("titulo_encontrado", f"%{termino}%")\
+         .gte("fecha_captura", limite_tiempo)\
+         .order("precio", desc=False).limit(50).execute()
+    except Exception:
+        precios_data = supabase.table("historial_precios").select(
+            "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
+        ).gte("fecha_captura", limite_tiempo)\
+         .limit(200).execute()
+        precios_data.data = [
+            item for item in (precios_data.data or [])
+            if termino in (item.get("titulo_encontrado") or "").lower()
+        ]
     
-    # --- MEJORA 2: Escudo Anti-Duplicados por URL ---
+    # --- Escudo Anti-Duplicados por URL ---
     resultados_limpios = []
     urls_vistas = set()
     
@@ -209,3 +218,117 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             }
         )
     raise exc
+
+
+# ============== AI ADVISOR ==============
+
+from pydantic import BaseModel
+from ai_advisor import get_advisor
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_history: list[dict] = []
+    context: Optional[dict] = None
+
+
+class PreciosRequest(BaseModel):
+    terminos: list[str]
+    limite_por_termino: int = 10
+
+
+def buscar_productos_por_terminos(terminos: list[str], limite: int = 10) -> list[dict]:
+    limite_tiempo = (datetime.utcnow() - timedelta(hours=48)).isoformat()
+    
+    todos_productos = []
+    
+    for termino in terminos:
+        termino_lower = termino.lower().strip()
+        if len(termino_lower) < 2:
+            continue
+        
+        try:
+            precios_data = supabase.table("historial_precios").select(
+                "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
+            ).ilike("titulo_encontrado", f"%{termino}%")\
+             .gte("fecha_captura", limite_tiempo)\
+             .order("precio", desc=False).limit(50).execute()
+        except Exception:
+            precios_data = supabase.table("historial_precios").select(
+                "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
+            ).gte("fecha_captura", limite_tiempo)\
+             .limit(200).execute()
+            precios_data.data = [
+                item for item in (precios_data.data or [])
+                if termino_lower in (item.get("titulo_encontrado") or "").lower()
+            ]
+            
+            urls_vistas = set()
+            for item in (precios_data.data or []):
+                url_actual = item.get("url_compra", "")
+                if url_actual in urls_vistas and url_actual != "":
+                    continue
+                urls_vistas.add(url_actual)
+                
+                todos_productos.append({
+                    "termino_buscado": termino,
+                    "supermercado": item.get("supermercados", {}).get("nombre", "Unknown"),
+                    "producto": item.get("titulo_encontrado", ""),
+                    "precio": item.get("precio", 0),
+                    "precio_por_unidad": item.get("precio_x_unidad", ""),
+                    "url": url_actual,
+                    "fecha": item.get("fecha_captura", "")
+                })
+        except Exception as e:
+            print(f"[Error buscando '{termino}'] {e}")
+            continue
+    
+    return todos_productos
+
+
+@app.post("/api/ai/consultar-precios")
+async def consultar_precios(request: PreciosRequest):
+    if not request.terminos:
+        raise HTTPException(status_code=400, detail="Debe proporcionar al menos un termino de busqueda")
+    
+    if len(request.terminos) > 20:
+        raise HTTPException(status_code=400, detail="Maximo 20 terminos permitidos")
+    
+    try:
+        productos = buscar_productos_por_terminos(request.terminos, request.limite_por_termino)
+        
+        return {
+            "success": True,
+            "total_encontrados": len(productos),
+            "productos": productos
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error consultando precios: {str(e)}")
+
+
+@app.get("/chat")
+def chat_page(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-cache"
+    return templates.TemplateResponse("chat.html", {"request": request})
+
+
+@app.post("/api/ai/chat")
+async def chat(request: ChatRequest):
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="El mensaje no puede estar vacio")
+    
+    if len(request.message) > 2000:
+        raise HTTPException(status_code=400, detail="El mensaje es demasiado largo (max 2000 caracteres)")
+    
+    try:
+        advisor = get_advisor()
+        result = await advisor.chat(
+            message=request.message,
+            conversation_history=request.conversation_history,
+            context=request.context
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
