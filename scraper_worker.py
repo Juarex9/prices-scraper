@@ -1,6 +1,6 @@
 import os
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -74,6 +74,19 @@ async def main():
                 supabase.table("historial_precios").insert(batch).execute()
                 print(f"[Worker] Insertados {len(batch)} registros")
     
+    # --- RUTINA DE LIMPIEZA ---
+    dias_retencion = 3
+    limite_borrado = (datetime.utcnow() - timedelta(days=dias_retencion)).isoformat()
+
+    try:
+        print(f"\n[Worker] Iniciando limpieza de registros anteriores a {dias_retencion} días...")
+        # Ejecutamos el DELETE en Supabase
+        respuesta = supabase.table("historial_precios").delete().lt("fecha_captura", limite_borrado).execute()
+        print(f"[Worker] Limpieza completada con éxito. Registros antiguos eliminados.")
+    except Exception as e:
+        print(f"[Worker] Error durante la limpieza: {e}")
+
+    # --- FINALIZACIÓN ---
     elapsed = asyncio.get_event_loop().time() - start_time
     print(f"\n[Worker] Finalizado en {elapsed:.1f} segundos")
 
