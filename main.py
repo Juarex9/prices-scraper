@@ -33,8 +33,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 jinja_env = Environment(
     loader=FileSystemLoader("templates"),
     autoescape=select_autoescape(),
-    auto_reload=False,
-    cache_size=0
+    auto_reload=False
 )
 
 def render_template(template_name: str, context: dict = None):
@@ -332,6 +331,8 @@ async def chat(request: ChatRequest):
         )
         return result
     except ValueError as e:
+        print(f"[ERROR chat] ValueError: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
+        print(f"[ERROR chat] Exception: {e}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
