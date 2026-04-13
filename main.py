@@ -27,7 +27,14 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 limiter = Limiter(key_func=get_remote_address)
 
-templates = Jinja2Templates(directory="templates")
+# Disable template cache to avoid unhashable type errors
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+env = Environment(
+    loader=FileSystemLoader("templates"),
+    autoescape=select_autoescape(default_for_string=False),
+    auto_reload=False
+)
+templates = Jinja2Templates(env=env)
 
 
 class TTLCache:
