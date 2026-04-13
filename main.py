@@ -29,9 +29,10 @@ limiter = Limiter(key_func=get_remote_address)
 
 # Use plain Jinja2 to avoid Starlette caching issues
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 jinja_env = Environment(
     loader=FileSystemLoader("templates"),
-    autoescape=select_autoescape(default_for_string=False),
+    autoescape=select_autoescape(),
     auto_reload=False,
     cache_size=0
 )
