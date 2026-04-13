@@ -106,7 +106,7 @@ async def health_check(response: Response):
 @app.get("/")
 def home(request: Request, response: Response):
     response.headers["Cache-Control"] = "public, max-age=3600"
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {})
 
 
 @app.get("/buscar", response_class=HTMLResponse)
@@ -137,7 +137,6 @@ async def buscar_producto(request: Request, termino: str, response: Response):
         return templates.TemplateResponse(
             "resultados.html",
             {
-                "request": request,
                 "termino": termino,
                 "resultados": cached_result["resultados"],
                 "cached": True
@@ -185,7 +184,6 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     return templates.TemplateResponse(
         "resultados.html",
         {
-            "request": request,
             "termino": termino,
             "resultados": resultados_limpios
         }
@@ -204,7 +202,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         return templates.TemplateResponse(
             "resultados.html",
             {
-                "request": request,
                 "termino": request.query_params.get("termino", ""),
                 "resultados": [],
                 "error": exc.detail
@@ -292,7 +289,7 @@ async def consultar_precios(request: PreciosRequest):
 @app.get("/chat")
 def chat_page(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-cache"
-    return templates.TemplateResponse("chat.html", {"request": request})
+    return templates.TemplateResponse("chat.html", {})
 
 
 @app.post("/api/ai/chat")
