@@ -73,10 +73,12 @@ cache = TTLCache(max_size=100, ttl_seconds=300)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[Startup] Validando configuración...")
+    print("[Startup] Inicializando app...")
     print(f"[Startup] Supabase URL: {'✓ configurada' if SUPABASE_URL else '✗ missing'}")
     print(f"[Startup] Supabase KEY: {'✓ configurada' if SUPABASE_KEY else '✗ missing'}")
+    print(f"[Startup] Groq API: {'✓ configurada' if os.environ.get('GROQ_API_KEY') else '✗ missing'}")
     print("[Startup] Cache TTL: 5 minutos")
+    print("[Startup] Templates init: OK")
     print("[Startup] API lista para recibir requests")
     yield
     print("[Shutdown] Cerrando conexiones...")
