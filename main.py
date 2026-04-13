@@ -163,11 +163,19 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     
     limite_tiempo = (datetime.utcnow() - timedelta(hours=24)).isoformat()
     
-    precios_data = supabase.table("historial_precios").select(
-        "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
-    ).gte("fecha_captura", limite_tiempo)\
-     .text_search("titulo_encontrado", termino)\
-     .execute()
+    try:
+        precios_data = supabase.table("historial_precios").select(
+            "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
+        ).gte("fecha_captura", limite_tiempo)\
+         .ilike("titulo_encontrado", f"%{termino}%")\
+         .execute()
+    except Exception as e:
+        print(f"[ERROR] Query failed: {e}")
+        # Fallback sin text_search
+        precios_data = supabase.table("historial_precios").select(
+            "precio, titulo_encontrado, url_compra, fecha_captura, precio_x_unidad, supermercados(nombre)"
+        ).gte("fecha_captura", limite_tiempo)\
+         .execute()
     
     precios_data.data = (precios_data.data or [])[:50]
     precios_data.data.sort(key=lambda x: x.get("precio", 0) or 0)
