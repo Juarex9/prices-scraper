@@ -27,14 +27,18 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 limiter = Limiter(key_func=get_remote_address)
 
-# Disable template cache to avoid unhashable type errors
+# Use plain Jinja2 to avoid Starlette caching issues
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-env = Environment(
+jinja_env = Environment(
     loader=FileSystemLoader("templates"),
     autoescape=select_autoescape(default_for_string=False),
-    auto_reload=False
+    auto_reload=False,
+    cache_size=0
 )
-templates = Jinja2Templates(env=env)
+
+def render_template(template_name: str, context: dict = None):
+    template = jinja_env.get_template(template_name)
+    return template.render(context or {})
 
 
 class TTLCache:
@@ -115,7 +119,8 @@ async def health_check(response: Response):
 @app.get("/")
 def home(request: Request, response: Response):
     response.headers["Cache-Control"] = "public, max-age=3600"
-    return templates.TemplateResponse("index.html", {})
+    content = render_template("index.html", {})
+    return HTMLResponse(content)
 
 
 @app.get("/buscar", response_class=HTMLResponse)
@@ -143,14 +148,14 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     if cached_result:
         response.headers["X-Cache"] = "HIT"
         response.headers["Cache-Control"] = "public, max-age=300"
-        return templates.TemplateResponse(
+        return HTMLResponse(render_template(
             "resultados.html",
             {
                 "termino": termino,
                 "resultados": cached_result["resultados"],
                 "cached": True
             }
-        )
+        ))
     
     response.headers["X-Cache"] = "MISS"
     response.headers["Cache-Control"] = "public, max-age=300"
@@ -190,13 +195,13 @@ async def buscar_producto(request: Request, termino: str, response: Response):
     
     cache.set(cache_key, {"resultados": resultados_limpios})
     
-    return templates.TemplateResponse(
+    return HTMLResponse(render_template(
         "resultados.html",
         {
             "termino": termino,
             "resultados": resultados_limpios
         }
-    )
+    ))
 
 
 @app.delete("/cache")
@@ -208,14 +213,14 @@ async def clear_cache(response: Response):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code == 400:
-        return templates.TemplateResponse(
+        return HTMLResponse(render_template(
             "resultados.html",
             {
                 "termino": request.query_params.get("termino", ""),
                 "resultados": [],
                 "error": exc.detail
             }
-        )
+        ))
     raise exc
 
 
@@ -298,7 +303,7 @@ async def consultar_precios(request: PreciosRequest):
 @app.get("/chat")
 def chat_page(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-cache"
-    return templates.TemplateResponse("chat.html", {})
+    return HTMLResponse(render_template("chat.html", {}))
 
 
 @app.post("/api/ai/chat")
